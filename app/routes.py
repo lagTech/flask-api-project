@@ -1,21 +1,17 @@
-from flask import Flask, jsonify, request
+from flask import jsonify, request
+from app import app  # Import the global app instance from __init__.py
 from app.models import Product, Order
-from app.database import database
+from app.database import database  # Even if it's grey, leave it here in case we use it later
 
-app = Flask(__name__)
-
-# Homepage route (welcome message)
 @app.route("/")
 def home():
     return jsonify({"message": "Welcome to the Flask API!"})
 
-# Route to retrieve all products
-@app.route("/products", methods=["GET"])  # <- Change to "/products"
+@app.route("/products", methods=["GET"])
 def get_products():
     products = Product.select()
     return jsonify({"products": [p.__data__ for p in products]}), 200
 
-# Route to create an order
 @app.route("/order", methods=["POST"])
 def create_order():
     data = request.get_json()
@@ -37,7 +33,3 @@ def create_order():
 
     order = Order.create(product=product, quantity=quantity, total_price=product.price * quantity)
     return jsonify({"order_id": order.id}), 302
-
-# Lancer l'application
-if __name__ == "__main__":
-    app.run(debug=True)

@@ -1,5 +1,5 @@
-from peewee import Model, IntegerField, CharField, BooleanField, FloatField, ForeignKeyField
-from app.database import database
+from peewee import Model,SqliteDatabase, IntegerField, CharField, BooleanField, FloatField, ForeignKeyField
+database = SqliteDatabase('database.db')
 
 class BaseModel(Model):
     class Meta:
@@ -22,6 +22,7 @@ class Order(BaseModel):
     total_price_tax = FloatField(null=True)
     email = CharField(null=True)
     paid = BooleanField(default=False)
+    shipping_price = FloatField(null=True)
 
 # Création des tables
 database.connect()
