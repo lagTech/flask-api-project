@@ -24,6 +24,13 @@ class Order(BaseModel):
     paid = BooleanField(default=False)
     shipping_price = FloatField(null=True)
 
+    # New Shipping Fields
+    country = CharField(null=True)
+    address = CharField(null=True)
+    postal_code = CharField(null=True)
+    city = CharField(null=True)
+    province = CharField(null=True)
+
 # Création des tables
 database.connect()
 database.create_tables([Product, Order])
