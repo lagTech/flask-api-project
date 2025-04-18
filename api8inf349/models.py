@@ -1,5 +1,5 @@
-from peewee import Model,SqliteDatabase, IntegerField, CharField, BooleanField, FloatField, ForeignKeyField
-database = SqliteDatabase('database.db')
+from peewee import Model, IntegerField, CharField, BooleanField, FloatField, ForeignKeyField
+from app.database import database
 
 class BaseModel(Model):
     class Meta:
@@ -23,6 +23,7 @@ class Order(BaseModel):
     email = CharField(null=True)
     paid = BooleanField(default=False)
     shipping_price = FloatField(null=True)
+    transaction_id = CharField(null=True)
 
     # New Shipping Fields
     country = CharField(null=True)
@@ -30,8 +31,3 @@ class Order(BaseModel):
     postal_code = CharField(null=True)
     city = CharField(null=True)
     province = CharField(null=True)
-
-# Création des tables
-database.connect()
-database.create_tables([Product, Order])
-database.close()
