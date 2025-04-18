@@ -1,12 +1,12 @@
-from peewee import Model, IntegerField, CharField, BooleanField, FloatField, ForeignKeyField
-from app.database import database
+from peewee import Model, IntegerField, CharField, BooleanField, FloatField, ForeignKeyField, AutoField
+from api8inf349.database import database
 
 class BaseModel(Model):
     class Meta:
         database = database
 
 class Product(BaseModel):
-    id = IntegerField(primary_key=True)
+    id = AutoField()
     name = CharField()
     description = CharField()
     price = FloatField()
@@ -15,9 +15,7 @@ class Product(BaseModel):
     image = CharField()
 
 class Order(BaseModel):
-    id = IntegerField(primary_key=True)
-    product = ForeignKeyField(Product, backref="orders")
-    quantity = IntegerField()
+    id = AutoField()
     total_price = FloatField()
     total_price_tax = FloatField(null=True)
     email = CharField(null=True)
@@ -31,3 +29,8 @@ class Order(BaseModel):
     postal_code = CharField(null=True)
     city = CharField(null=True)
     province = CharField(null=True)
+
+class OrderProduct(BaseModel):
+    order = ForeignKeyField(Order, backref="products")
+    product = ForeignKeyField(Product)
+    quantity = IntegerField()

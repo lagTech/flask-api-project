@@ -1,9 +1,15 @@
 from flask import jsonify, request
-from app import app
+from api8inf349 import app
 import json
 import requests
-from app.models import Product, Order
-from app.database import database
+from rq import Queue
+from rq.job import Job
+from redis.exceptions import RedisError
+from api8inf349.models import Product, Order, OrderProduct
+from api8inf349.database import database
+from api8inf349.redis_client import redis_client
+from api8inf349.tasks import process_payment
+
 
 TAX_RATES = {"QC": 0.15, "ON": 0.13, "AB": 0.05, "BC": 0.12, "NS": 0.14}
 SHIPPING_COSTS = [(500, 5), (2000, 10), (float("inf"), 25)]
@@ -18,76 +24,89 @@ def get_products():
 def create_order():
     data = request.get_json()
 
-    # Check if "product" exists
-    if "product" not in data:
-        return jsonify({"errors": {"product": {"code": "missing-fields", "name": "Product details required"}}}), 422
+    # Supporte `products` (nouveau format) ou `product` (ancien)
+    products_data = []
 
-    # Check if "product" is a **list** (invalid case)
-    if isinstance(data["product"], list):
-        return jsonify({"errors": {"product": {"code": "invalid-format", "name": "Only one product is allowed per order"}}}), 422
+    if "products" in data and isinstance(data["products"], list):
+        products_data = data["products"]
+    elif "product" in data and isinstance(data["product"], dict):
+        products_data = [data["product"]]
+    else:
+        return jsonify({"errors": {"products": {
+            "code": "missing-fields",
+            "name": "Missing or invalid 'product(s)'"
+        }}}), 422
 
-    # Ensure "product" is a dictionary
-    if not isinstance(data["product"], dict):
-        return jsonify({"errors": {"product": {"code": "invalid-format", "name": "Product must be an object"}}}), 422
+    if not products_data:
+        return jsonify({"errors": {"products": {
+            "code": "empty",
+            "name": "No products provided"
+        }}}), 422
 
-    # Ensure "product" has required fields
-    if "id" not in data["product"] or "quantity" not in data["product"]:
-        return jsonify({"errors": {"product": {"code": "missing-fields", "name": "Product ID and quantity are required"}}}), 422
+    # Création de la commande
+    order = Order.create(total_price=0)
+    total_price = 0
 
-    product_id = data["product"]["id"]
-    quantity = data["product"]["quantity"]
+    for item in products_data:
+        product_id = item.get("id")
+        quantity = item.get("quantity", 1)
 
-    # Ensure quantity is valid
-    if quantity < 1:
-        return jsonify({"errors": {"product": {"code": "invalid-quantity", "name": "Quantity must be at least 1"}}}), 422
+        if not product_id or quantity < 1:
+            return jsonify({"errors": {"products": {
+                "code": "invalid-entry",
+                "name": f"Invalid product ID or quantity: {item}"
+            }}}), 422
 
-    #  Check if product exists
-    product = Product.get_or_none(Product.id == product_id)
-    if not product:
-        return jsonify({"errors": {"product": {"code": "not-found", "name": "Product not found"}}}), 404
+        product = Product.get_or_none(Product.id == product_id)
+        if not product or not product.in_stock:
+            return jsonify({"errors": {"products": {
+                "code": "not-found",
+                "name": f"Product ID {product_id} not found or out of stock"
+            }}}), 422
 
-    # Check stock availability
-    if not product.in_stock:
-        return jsonify({"errors": {"product": {"code": "out-of-inventory", "name": "Product is out of stock"}}}), 422
+        # Ajout à la table de liaison (OrderProduct)
+        OrderProduct.create(order=order, product=product, quantity=quantity)
+        total_price += product.price * quantity
 
-    # Create order
-    total_price = product.price * quantity
-    order = Order.create(product=product, quantity=quantity, total_price=total_price)
+    order.total_price = total_price
+    order.save()
 
     return jsonify({"order_id": order.id}), 302, {"Location": f"/order/{order.id}"}
 
+
 @app.route("/order/<int:order_id>", methods=["GET"])
 def get_order(order_id):
+    cached = redis_client.get(f"order:{order_id}")
+    if cached:
+        return jsonify(json.loads(cached)), 200
+
     order = Order.get_or_none(Order.id == order_id)
     if not order:
         return jsonify({"errors": {"order": {"code": "not-found", "name": "Order not found"}}}), 404
+
+    product_entries = [
+        {"id": op.product.id, "quantity": op.quantity}
+        for op in order.products
+    ]
 
     response_data = {
         "order": {
             "id": order.id,
             "total_price": order.total_price,
-            "total_price_tax": order.total_price_tax if order.total_price_tax else 0.0,
+            "total_price_tax": order.total_price_tax or 0.0,
             "email": order.email,
             "credit_card": {},
-            "shipping_information": (
-    {
-        "country": order.country,
-        "address": order.address,
-        "postal_code": order.postal_code,
-        "city": order.city,
-        "province": order.province
-    }
-    if any([order.country, order.address, order.postal_code, order.city, order.province])
-    else {}
-)
-,
+            "shipping_information": {
+                "country": order.country,
+                "address": order.address,
+                "postal_code": order.postal_code,
+                "city": order.city,
+                "province": order.province
+            } if any([order.country, order.address, order.postal_code, order.city, order.province]) else {},
             "paid": order.paid,
             "transaction": {},
-            "product": {
-                "id": order.product.id,
-                "quantity": order.quantity
-            },
-            "shipping_price": order.shipping_price if order.shipping_price else 0.0
+            "products": product_entries,
+            "shipping_price": order.shipping_price or 0.0
         }
     }
 
@@ -97,9 +116,11 @@ def get_order(order_id):
 @app.route("/order/<int:order_id>", methods=["PUT"])
 def update_order_and_pay(order_id):
     order = Order.get_or_none(Order.id == order_id)
-
     if not order:
         return jsonify({"errors": {"order": {"code": "not-found", "name": "Order not found"}}}), 404
+
+    if order.paid:
+        return jsonify({"errors": {"order": {"code": "already-paid", "name": "Order is already paid and cannot be modified"}}}), 409
 
     data = request.get_json()
 
@@ -111,106 +132,54 @@ def update_order_and_pay(order_id):
             "code": "invalid-operation",
             "name": "Cannot update shipping info and pay at the same time"
         }}}), 422
-
     elif "order" in data:
         is_update = True
-
     elif "credit_card" in data:
         is_payment = True
 
     if is_update:
-        if "order" not in data or "shipping_information" not in data["order"] or "email" not in data["order"]:
+        shipping_info = data["order"].get("shipping_information", {})
+        email = data["order"].get("email", "").strip()
+
+        if not email or not all(shipping_info.get(field) for field in ["country", "address", "postal_code", "city", "province"]):
             return jsonify({"errors": {"order": {
                 "code": "missing-fields",
                 "name": "Shipping info & email required"
             }}}), 422
 
-        # Validate email is not empty or just spaces
-        email = data["order"]["email"].strip() if data["order"]["email"] else ""
-        if not email:
-            return jsonify({"errors": {"email": {"code": "invalid-email", "name": "Email cannot be empty"}}}), 422
-
-        shipping_info = data["order"]["shipping_information"]
-
-        required_fields = ["country", "address", "postal_code", "city", "province"]
-
-        missing_fields = [field for field in required_fields if not shipping_info.get(field)]
-        if missing_fields:
-            return jsonify({"errors": {"shipping_information": {
-                "code": "invalid-fields",
-                "name": f"Missing or empty fields: {', '.join(missing_fields)}"
-            }}}), 422
-
-        order.email = data["order"]["email"]
+        order.email = email
         order.country = shipping_info["country"]
         order.address = shipping_info["address"]
         order.postal_code = shipping_info["postal_code"]
         order.city = shipping_info["city"]
         order.province = shipping_info["province"]
 
-        # Calculate tax
         tax_rate = TAX_RATES.get(order.province, 0)
         order.total_price_tax = order.total_price * (1 + tax_rate)
 
-        # Calculate shipping price
-        weight = order.product.weight * order.quantity
-        order.shipping_price = next(price for max_weight, price in SHIPPING_COSTS if weight <= max_weight)
+        total_weight = sum(op.product.weight * op.quantity for op in order.products)
+        order.shipping_price = next(price for max_weight, price in SHIPPING_COSTS if total_weight <= max_weight)
 
         order.save()
 
-        response_data = {
-            "order": {
-                "id": order.id,
-                "total_price": order.total_price,
-                "total_price_tax": order.total_price_tax if order.total_price_tax else 0.0,
-                "email": order.email,
-                "credit_card": {},
-                "shipping_information": (
-                    {
-                        "country": order.country,
-                        "address": order.address,
-                        "postal_code": order.postal_code,
-                        "city": order.city,
-                        "province": order.province
-                    }
-                    if any([order.country, order.address, order.postal_code, order.city, order.province])
-                    else {}
-                )
-                ,
-                "paid": order.paid,
-                "transaction": {},
-                "product": {
-                    "id": order.product.id,
-                    "quantity": order.quantity
-                },
-                "shipping_price": order.shipping_price if order.shipping_price else 0.0
-            }
-        }
+        return get_order(order.id)  # Réutilise le format de GET
 
-        return jsonify(response_data), 200
     if is_payment:
-        # Cannot pay twice
-        if order.paid:
-            return jsonify({"errors": {"order": {"code": "already-paid", "name": "Order already paid"}}}), 422
-
-        # Check if order has required information
         if not order.email or not all([order.country, order.address, order.postal_code, order.city, order.province]):
             return jsonify({"errors": {"order": {
                 "code": "missing-fields",
                 "name": "Order must have email and shipping information before payment"
             }}}), 422
 
-        # Extract and validate credit card details
         credit_card = data["credit_card"]
-        required_card_fields = ["number", "expiration_year", "expiration_month", "cvv", "name"]
+        required_fields = ["number", "expiration_year", "expiration_month", "cvv", "name"]
 
-        if not all(k in credit_card for k in required_card_fields):
+        if not all(k in credit_card for k in required_fields):
             return jsonify({"errors": {"payment": {
                 "code": "invalid-fields",
                 "name": "Incomplete credit card details"
             }}}), 422
 
-        # Format payment data
         payment_data = {
             "credit_card": {
                 "number": credit_card["number"],
@@ -220,77 +189,57 @@ def update_order_and_pay(order_id):
             },
             "amount_charged": order.total_price_tax + order.shipping_price
         }
-        print("DEBUG - Payment Data Sent to API:", json.dumps(payment_data, indent=4))
 
-        # Send payment request to remote payment API
-        PAYMENT_URL = "https://dimensweb.uqac.ca/~jgnault/shops/pay/"
-        headers = {"Host": "dimensweb.uqac.ca", "Content-Type": "application/json"}
-
-        try:
-            response = requests.post(PAYMENT_URL, json=payment_data, headers=headers)
-            print("DEBUG - Payment API Response Code:", response.status_code)
-            print("DEBUG - Payment API Response Text:", response.text)
-
-            if response.status_code != 200:
-                return jsonify(response.json()), 422
-
-            payment_response = response.json()
-
-        except requests.exceptions.RequestException as e:
-            print("ERROR - Payment API Request Failed:", str(e))
-            return jsonify({"errors": {"payment": {
-                "code": "server-error",
-                "name": "Payment service unavailable"
-            }}}), 500
-
-        # Mark order as paid and save transaction details
-        order.paid = True
-        order.transaction_id = payment_response["transaction"]["id"]
-        order.save()
-
-        # Extract first and last digits of card number
-        first_digits = credit_card["number"][:4]
-        last_digits = credit_card["number"][-4:]
+        q = Queue(connection=redis_client)
+        job = q.enqueue(
+            process_payment,
+            order.id,
+            payment_data,
+            credit_card,
+            "https://dimensweb.uqac.ca/~jgnault/shops/pay/"
+        )
 
         return jsonify({
-            "order": {
-                "id": order.id,
-                "total_price": order.total_price,
-                "total_price_tax": order.total_price_tax,
-                "email": order.email,
-                "credit_card": {
-                    "name": credit_card["name"],
-                    "first_digits": first_digits,
-                    "last_digits": last_digits,
-                    "expiration_year": credit_card["expiration_year"],
-                    "expiration_month": credit_card["expiration_month"]
-                },
-                "shipping_information": {
-                    "country": order.country,
-                    "address": order.address,
-                    "postal_code": order.postal_code,
-                    "city": order.city,
-                    "province": order.province
-                },
-                "paid": order.paid,
-                "transaction": payment_response["transaction"],
-                "product": {
-                    "id": order.product.id,
-                    "quantity": order.quantity
-                },
-                "shipping_price": order.shipping_price
-            }
-        }), 200
-
+            "message": "Payment processing started",
+            "job_id": job.get_id()
+        }), 202
 
     return jsonify({"errors": {"order": {"code": "invalid-request", "name": "Invalid request format"}}}), 400
 
+@app.route("/job/<job_id>", methods=["GET"])
+def get_job_status(job_id):
+    try:
+        job = Job.fetch(job_id, connection=redis_client)
+    except RedisError:
+        return jsonify({"error": "Redis unavailable"}), 503
+    except Exception:
+        return jsonify({"error": "Job not found"}), 404
 
+    response = {
+        "id": job.id,
+        "status": job.get_status(),
+        "result": job.result if job.is_finished else None
+    }
 
+    return jsonify(response), 200
 
+# additional method
+@app.route("/order", methods=["GET"])
+def list_orders():
+    orders = Order.select().order_by(Order.id.desc())
 
+    response = {
+        "orders": []
+    }
 
+    for order in orders:
+        response["orders"].append({
+            "id": order.id,
+            "email": order.email,
+            "total_price": order.total_price,
+            "paid": order.paid,
+            "products_count": order.products.count()
+        })
 
-
-
+    return jsonify(response), 200
 

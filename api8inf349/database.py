@@ -1,5 +1,5 @@
 from peewee import PostgresqlDatabase
-from app.config import Config
+from api8inf349.config import Config
 import os
 import requests
 

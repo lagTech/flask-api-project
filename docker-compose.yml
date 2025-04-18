@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:12
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret123
+      POSTGRES_DB: api8inf349
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:5
+    restart: always
+    ports:
+      - "6379:6379"
+
+  api:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_APP: api8inf349
+      FLASK_DEBUG: "true"
+      REDIS_URL: redis://redis
+      DB_HOST: postgres
+      DB_USER: postgres
+      DB_PASSWORD: secret123
+      DB_PORT: 5432
+      DB_NAME: api8inf349
+    depends_on:
+      - postgres
+      - redis
+    command: flask run --host=0.0.0.0
+
+  worker:
+    build: .
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      REDIS_URL: redis://redis
+      DB_HOST: postgres
+      DB_USER: postgres
+      DB_PASSWORD: secret123
+      DB_PORT: 5432
+      DB_NAME: api8inf349
+    command: python worker.py  # ou rq worker si tu veux utiliser RQ directement
+
+volumes:
+  pgdata:

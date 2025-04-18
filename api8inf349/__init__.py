@@ -1,13 +1,11 @@
 from flask import Flask
-from app.commands import init_db_command
-from app.bootstrap import fetch_products
+from api8inf349.commands import init_db_command
 
 
-app = Flask(__name__)  # Define the global app instance
 
-from app import routes  # Import routes AFTER defining app
+app = Flask(__name__)  # Define the global api8inf349 instance
 
-
+from api8inf349 import routes
 app.cli.add_command(init_db_command)
 
-print("✅ Flask app loaded from __init__.py")
+print(" Flask api8inf349 loaded from __init__.py")

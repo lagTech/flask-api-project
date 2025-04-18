@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from app import app  # Import from app/__init__.py
+from api8inf349 import app  # Import from api8inf349/__init__.py
 
 # Load environment variables
 load_dotenv()
