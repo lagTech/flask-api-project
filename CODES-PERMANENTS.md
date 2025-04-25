@@ -7,6 +7,9 @@
 ## Lien github
 -https://github.com/lagTech/flask-api-project
 
+## Lien de la video(presentation)
+https://uqac.ca.panopto.com/Panopto/Pages/Viewer.aspx?id=4bb0064e-f631-4ccc-a5dd-b2ca010fbe22
+
 
 ## Guide d'exécution locale de l'application
 
