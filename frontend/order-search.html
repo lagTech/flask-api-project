@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Rechercher une commande</title>
+    <link rel="stylesheet" href="style.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 30px;
+            background-color: #f5f5f5;
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+
+        .search-bar {
+            max-width: 400px;
+            margin: 0 auto 30px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .search-bar input {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+        }
+
+        .search-bar button {
+            padding: 10px 15px;
+            font-size: 16px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        .order-details {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .product {
+            display: flex;
+            gap: 15px;
+            border-bottom: 1px solid #ddd;
+            padding: 10px 0;
+            align-items: center;
+        }
+
+        .product img {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 6px;
+        }
+
+        .product-info {
+            flex-grow: 1;
+        }
+
+        .shipping-info, .order-summary {
+            margin-top: 20px;
+        }
+
+        .label {
+            font-weight: bold;
+        }
+
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+
+            .order-details, .order-details * {
+                visibility: visible;
+            }
+
+            .order-details {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="top-bar">
+    <div id="menu-placeholder"></div>
+    <script>
+        fetch("menu.html")
+            .then(res => res.text())
+            .then(html => document.getElementById("menu-placeholder").innerHTML = html);
+    </script>
+
+    <h1>Boutique 8INF349</h1>
+</div>
+
+<h1>Rechercher une commande</h1>
+
+<div class="search-bar">
+    <input type="number" id="search-id" placeholder="Entrer l'ID de commande..."/>
+    <button onclick="searchOrder()"><i class="fas fa-search"></i></button>
+</div>
+
+<div id="order-container"></div>
+<div style="text-align: center; margin-top: 30px;">
+    <button onclick="window.print()" style="
+    padding: 10px 20px;
+    background-color: #28a745;
+    color: white;
+    font-size: 16px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+  ">
+        <i class="fas fa-print"></i> Imprimer / Télécharger
+    </button>
+</div>
+
+<script>
+    function searchOrder() {
+        const id = document.getElementById('search-id').value.trim();
+        if (!id) return alert("Veuillez entrer un ID de commande.");
+
+        fetch(`http://localhost:5000/order/${id}`)
+            .then(res => {
+                if (!res.ok) throw new Error("Commande introuvable.");
+                return res.json();
+            })
+            .then(data => {
+                const order = data.order;
+                const container = document.getElementById('order-container');
+
+                const productHtml = order.products.map(p => {
+                    const imageSrc = `/frontend/static/img/${p.id - 1}.jpg`;
+                    const totalPrice = (p.price * p.quantity).toFixed(2);
+                    const unitPrice = (p.price).toFixed(2);
+
+
+                    return `
+          <div class="product">
+            <img src="${imageSrc}" alt="${p.name}">
+            <div class="product-info">
+              <div><span class="label">Nom:</span> ${p.name ?? 'Produit'}</div>
+              <div><span class="label">Prix unitaire:</span> $${unitPrice}</div>
+              <div><span class="label">Quantité:</span> ${p.quantity}</div>
+              <div><span class="label">Sous-total:</span> $${totalPrice}</div>
+            </div>
+          </div>
+        `;
+                }).join('');
+
+                const shipping = order.shipping_information || {};
+                const shippingHtml = `
+        <div class="shipping-info">
+          <h3>Informations de livraison</h3>
+          <p><span class="label">Email:</span> ${order.email ?? '—'}</p>
+          <p><span class="label">Adresse:</span> ${shipping.address ?? '—'}, ${shipping.city ?? ''}, ${shipping.postal_code ?? ''}, ${shipping.province ?? ''}, ${shipping.country ?? ''}</p>
+        </div>
+      `;
+
+                const summaryHtml = `
+        <div class="order-summary">
+          <h3>Résumé</h3>
+          <p><span class="label">Total produits:</span> $${order.total_price.toFixed(2)}</p>
+          <p><span class="label">Frais de livraison:</span> $${(order.shipping_price ?? 0).toFixed(2)}</p>
+          <p><span class="label">Total (avec taxes):</span> $${(order.total_price_tax ?? 0).toFixed(2)}</p>
+          <p><span class="label">Payé:</span> ${order.paid ? 'Oui ✅' : 'Non ❌'}</p>
+        </div>
+      `;
+
+                container.innerHTML = `
+        <div class="order-details">
+          <h2>Commande #${order.id}</h2>
+          ${productHtml}
+          ${shippingHtml}
+          ${summaryHtml}
+        </div>
+      `;
+            })
+            .catch(err => {
+                document.getElementById('order-container').innerHTML = `<p style="color:red;">${err.message}</p>`;
+            });
+    }
+</script>
+
+</body>
+</html>

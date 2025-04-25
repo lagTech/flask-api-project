@@ -1,6 +1,7 @@
 from flask import jsonify, request
 from api8inf349 import app
 import json
+import os
 import requests
 from rq import Queue
 from rq.job import Job
@@ -9,16 +10,31 @@ from api8inf349.models import Product, Order, OrderProduct
 from api8inf349.database import database
 from api8inf349.redis_client import redis_client
 from api8inf349.tasks import process_payment
+from flask import send_from_directory
 
 
 TAX_RATES = {"QC": 0.15, "ON": 0.13, "AB": 0.05, "BC": 0.12, "NS": 0.14}
 SHIPPING_COSTS = [(500, 5), (2000, 10), (float("inf"), 25)]
 
+# @app.route("/")
+# def get_products():
+#     products = Product.select()
+#     return jsonify({"products": [p.__data__ for p in products]}), 200
+
+
+# Get products with pagination
 @app.route("/")
 def get_products():
-    products = Product.select()
-    return jsonify({"products": [p.__data__ for p in products]}), 200
+    page = int(request.args.get("page", 1))
+    limit = int(request.args.get("limit", 10))
+    query = Product.select().paginate(page, limit)
+    total = Product.select().count()
 
+    return jsonify({
+        "products": [p.__data__ for p in query],
+        "total": total,
+        "page": page
+    }), 200
 
 @app.route("/order", methods=["POST"])
 def create_order():
@@ -71,8 +87,8 @@ def create_order():
     order.total_price = total_price
     order.save()
 
-    return jsonify({"order_id": order.id}), 302, {"Location": f"/order/{order.id}"}
-
+    # return jsonify({"order_id": order.id}), 302, {"Location": f"/order/{order.id}"}
+    return jsonify({"order_id": order.id}), 201
 
 @app.route("/order/<int:order_id>", methods=["GET"])
 def get_order(order_id):
@@ -85,9 +101,24 @@ def get_order(order_id):
         return jsonify({"errors": {"order": {"code": "not-found", "name": "Order not found"}}}), 404
 
     product_entries = [
-        {"id": op.product.id, "quantity": op.quantity}
+        {
+            "id": op.product.id,
+            "name": op.product.name,
+            "quantity": op.quantity,
+            "price": float(op.product.price)
+        }
         for op in order.products
     ]
+
+    # Préparer les données de transaction
+    transaction_data = {}
+    if order.transaction_id:
+        transaction_data = {"id": order.transaction_id}
+    elif order.transaction_error:
+        try:
+            transaction_data = json.loads(order.transaction_error)
+        except:
+            transaction_data = {"error": "payment-failed", "details": order.transaction_error}
 
     response_data = {
         "order": {
@@ -104,7 +135,7 @@ def get_order(order_id):
                 "province": order.province
             } if any([order.country, order.address, order.postal_code, order.city, order.province]) else {},
             "paid": order.paid,
-            "transaction": {},
+            "transaction": transaction_data,
             "products": product_entries,
             "shipping_price": order.shipping_price or 0.0
         }
@@ -243,3 +274,12 @@ def list_orders():
 
     return jsonify(response), 200
 
+@app.route("/frontend/<path:path>")
+def serve_frontend(path):
+    frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
+    return send_from_directory(frontend_dir, path)
+
+@app.route("/img/<filename>")
+def serve_image(filename):
+    image_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "static", "img")
+    return send_from_directory(image_dir, filename)

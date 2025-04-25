@@ -1,5 +1,14 @@
+## Code Permanents
+- LACU01010000
+- SANJ10048604
+- CAMM06609200
+- NGUC13569800
 
-# Guide d'exécution locale de l'application
+## Lien github
+-https://github.com/lagTech/flask-api-project
+
+
+## Guide d'exécution locale de l'application
 
 Voici les étapes à suivre pour exécuter correctement ce projet Flask avec PostgreSQL et Redis via Docker.
 
@@ -83,3 +92,5 @@ Exemples utiles :
 - **Pas besoin d'installer PostgreSQL localement** : tout est géré via Docker avec un utilisateur `postgres` et mot de passe `secret123`.
 - Les données de PostgreSQL sont persistées dans le volume nommé `pgdata`.
 - En cas d'erreur liée aux tables manquantes, revérifiez que la commande `flask init-db` a bien été exécutée dans le bon conteneur.
+
+

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Confirmation de commande</title>
+    <link rel="stylesheet" href="style.css"/>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+
+<div class="confirmation-wrapper">
+
+    <div class="confirmation-container">
+
+        <h1>Suivez les étapes pour confirmer votre commande</h1>
+
+        <p id="order-info"></p>
+
+        <div class="product-dropdown">
+            <div class="dropdown-header" onclick="toggleProductDetails()">
+                <span>Détails des produits</span>
+                <i class="fas fa-chevron-down" id="dropdown-icon"></i>
+            </div>
+            <div id="product-details" class="dropdown-content" style="display: none;">
+                <!-- contenu inséré dynamiquement par JS -->
+            </div>
+        </div>
+
+        <button id="next-shipping">Étape suivante : Informations de livraison</button>
+
+        <div id="shipping-form" class="form-section" style="display: none;">
+            <h3>Informations de livraison</h3>
+            <input type="email" id="email" placeholder="Email" required/>
+            <input type="text" id="country" placeholder="Pays" required/>
+            <input type="text" id="address" placeholder="Adresse" required/>
+            <input type="text" id="postal_code" placeholder="Code postal" required/>
+            <input type="text" id="city" placeholder="Ville" required/>
+            <select id="province" required>
+                <option value="">-- Province --</option>
+                <option value="QC">Québec (QC)</option>
+                <option value="ON">Ontario (ON)</option>
+                <option value="BC">Colombie-Britannique (BC)</option>
+                <option value="AB">Alberta (AB)</option>
+                <option value="MB">Manitoba (MB)</option>
+                <option value="NB">Nouveau-Brunswick (NB)</option>
+                <option value="NL">Terre-Neuve-et-Labrador (NL)</option>
+                <option value="NS">Nouvelle-Écosse (NS)</option>
+                <option value="PE">Île-du-Prince-Édouard (PE)</option>
+                <option value="SK">Saskatchewan (SK)</option>
+                <option value="NT">Territoires du Nord-Ouest (NT)</option>
+                <option value="NU">Nunavut (NU)</option>
+                <option value="YT">Yukon (YT)</option>
+            </select>
+            <button id="submit-shipping">Confirmer l’adresse</button>
+        </div>
+
+        <div id="payment-form" class="form-section" style="display: none;">
+            <h3>Informations de carte bancaire</h3>
+            <input type="text" id="card-name" placeholder="Nom sur la carte" required/>
+            <input type="text" id="card-number" placeholder="Numéro de carte" required/>
+            <input type="text" id="card-exp-month" placeholder="Mois d'expiration (MM)" required/>
+            <input type="text" id="card-exp-year" placeholder="Année d'expiration (YYYY)" required/>
+            <input type="text" id="card-cvv" placeholder="CVV" required/>
+            <button id="confirm-payment">Valider le paiement</button>
+        </div>
+    </div>
+
+    <div class="nav-toggle">
+        <button class="nav-btn active" data-target="order-info" title="Produits">
+            <i class="fas fa-shopping-cart"></i>
+        </button>
+        <button class="nav-btn" data-target="shipping-form" title="Livraison">
+            <i class="fas fa-truck"></i>
+        </button>
+        <button class="nav-btn" data-target="payment-form" title="Paiement">
+            <i class="fas fa-credit-card"></i>
+        </button>
+    </div>
+</div>
+
+<script src="confirmation.js"></script>
+</body>
+</html>

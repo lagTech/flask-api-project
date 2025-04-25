@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Boutique 8INF349</title>
+    <link rel="stylesheet" href="style.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
+</head>
+<body>
+
+<div class="top-bar">
+    <div id="menu-placeholder"></div>
+    <script>
+        fetch("menu.html")
+            .then(res => res.text())
+            .then(html => document.getElementById("menu-placeholder").innerHTML = html);
+    </script>
+
+    <h1>Boutique 8INF349</h1>
+</div>
+
+
+<div class="menu-items" id="menuItems">
+    <div class="close-menu" onclick="toggleMenu()">
+        <i class="fas fa-times"></i>
+    </div>
+    <a href="index.html"><i class="fas fa-home"></i> Accueil</a>
+    <a href="order-search.html"><i class="fas fa-search"></i> Rechercher une commande</a>
+    <a href="#"><i class="fas fa-credit-card"></i> Payer une commande</a>
+</div>
+
+<div class="menu-overlay" id="menuOverlay" onclick="toggleMenu()"></div>
+
+
+<!-- Banner Image -->
+<div class="banner">
+    <img src="/frontend/static/img/banner.jpeg" alt="Bannière de la boutique" class="banner-image">
+    <div class="banner-text">Bienvenue dans notre boutique</div>
+</div>
+
+<div id="products-container"></div>
+<p id="pagination-info"></p>
+<div id="pagination" style="margin-top: 20px;"></div>
+
+<div class="cart" id="cart">
+    <h2>🛒 Panier</h2>
+    <div id="cart-items"></div>
+    <button class="btn-commander" onclick="submitOrder()">Commander</button>
+</div>
+
+
+<script src="script.js"></script>
+
+</body>
+</html>
